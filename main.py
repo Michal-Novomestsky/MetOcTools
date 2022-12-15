@@ -120,6 +120,7 @@ from matplotlib import pyplot as plt
 if __name__=='__main__':
     ###NOTE: I/O DIRECTORIES. CHANGE AS REQUIRED
     dir = os.getcwd()
+    dir = str(Path(dir).parents[0])
     readDir = dir + "\\Apr2015"
     writeDir = dir + "\\Apr2015_temp_and_w_clean"
 
