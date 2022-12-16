@@ -19,7 +19,7 @@ def cleanup_loop(readDir: Path, writeDir: Path, supervised=True, cpuFraction=75)
     #Manual one-by-one checking
     if supervised:
         for file in files:
-            rejectedFile = _cleanup_iteration(file, writeDir, supervised=supervised)
+            rejectedFile = _cleanup_iteration(file, writeDir, supervised=False)
             if rejectedFile is not None:
                 rejectedFiles.append(rejectedFile)
 
@@ -70,23 +70,24 @@ def _cleanup_iteration(file: Path, writeDir: Path, supervised=True) -> str|None:
 
     t2 = "Anemometer #2 Temperature (degC)"
     data.remove_nans(t2, data.originalDf)
-    data.prune_and(t2, data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2), iterations=2)
+    data.prune_and(t2, data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2))
+    data.prune_and(t2, data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2))
     
-    
+
     #data.plot_comparison(v1, fileName, supervised=supervised, saveLoc=writeDir + "plots")
     #data.plot_comparison(v2, fileName, supervised=supervised, saveLoc=writeDir + "plots")
     #data.plot_comparison(t1, fileName, supervised=supervised, saveLoc=writeDir + "plots")
     #data.plot_comparison(t2, fileName, supervised=supervised, saveLoc=writeDir + "plots")
 
-    #data.plot_ft_dev(v1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
-    #data.plot_ft_dev(v2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
-    #data.plot_ft_dev(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
-    #data.plot_ft_dev(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
+    #data.plot_ft_dev_loglog(v1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
+    #data.plot_ft_dev_loglog(v2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
+    #data.plot_ft_dev_loglog(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
+    #data.plot_ft_dev_loglog(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
     
-    data.plot_ft_loglog(v1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-5/3)
-    data.plot_ft_loglog(v2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-5/3)
-    data.plot_ft_loglog(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-1)
-    data.plot_ft_loglog(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-1)
+    #data.plot_ft_loglog(v1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-5/3)
+    #data.plot_ft_loglog(v2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-5/3)
+    #data.plot_ft_loglog(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-1)
+    #data.plot_ft_loglog(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-1)
 
     data.plot_hist(v1, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=100)
     data.plot_hist(v2, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=100)
