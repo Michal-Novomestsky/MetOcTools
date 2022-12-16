@@ -61,7 +61,7 @@ class DataCleaner:
         yChanged = self.df[entry]
         yOriginal = self.originalDf[entry]
 
-        title = fileName[:len(fileName) - 5] + plotTitle + entry
+        title = fileName[:len(fileName) - 4] + plotTitle + entry
 
         plt.plot(x, yOriginal, plotType, color='r')
         plt.plot(x, yChanged, plotType, color='b')
@@ -75,9 +75,9 @@ class DataCleaner:
             plt.savefig(saveLoc + "\\" + title + ".png")
             plt.close()
 
-    def plot_ft_dev(self, entry: str, fileName: str, supervised=False, saveLoc=None, plotTitle="_FT_DEVIATION_", plotType="-o", sampleSpacing=1) -> None:
+    def plot_ft_dev_loglog(self, entry: str, fileName: str, supervised=False, saveLoc=None, plotTitle="_FT_DEVIATION_", plotType="-o", sampleSpacing=1) -> None:
         """
-        Presents a plot of the % deviation in FFT as a result of the cleanup. sampleSpacing is the spacing between points in
+        Presents a loglog plot of the deviation in FFT as a result of the cleanup. sampleSpacing is the spacing between points in
         the frequency domain. Refer to plot_comparison for parameter details.
         """
         N = len(self.df[entry])
@@ -91,25 +91,13 @@ class DataCleaner:
         ft_yOriginal = 2/N * np.abs(ft_yOriginal[:N//2])**2
         ft_yOriginal[np.abs(ft_yOriginal) < 1e-2] = 1e-2
         
-        dev = 100*np.abs((ft_yChanged - ft_yOriginal)/ft_yOriginal)
+        dev = np.abs(ft_yChanged - ft_yOriginal)
 
-        title = fileName[:len(fileName) - 5] + plotTitle + entry
+        title = fileName[:len(fileName) - 4] + plotTitle + entry
 
-        fig, ax1 = plt.subplots()
-
-        ax1.set_xlabel('Frequency Domain')
-
-        ax1.set_ylabel('% Deviation', color='r')
-        ax1.plot(ft_x, dev, plotType, color='r')
-        ax1.tick_params(axis='y', labelcolor='r')
-
-        ax2 = ax1.twinx()
-
-        ax2.set_ylabel(f'Spectral Density of Clean {entry} Data', color='b')
-        ax2.plot(ft_x, ft_yChanged, plotType, color='b')
-        ax2.tick_params(axis='y', labelcolor='b')
-
-        fig.tight_layout() 
+        plt.loglog(ft_x, dev)
+        plt.xlabel('Frequency Domain')
+        plt.ylabel('Deviation')
 
         plt.title(title)
 
@@ -147,7 +135,7 @@ class DataCleaner:
             #Averaging over all time snapshots
             ft_y = ft_y_arr.mean(axis = 0)
 
-            title = fileName[:len(fileName) - 5] + plotTitle + f"_{turbSampleMins}MIN_" + entry
+            title = fileName[:len(fileName) - 4] + plotTitle + f"_{turbSampleMins}MIN_" + entry
         
         else:
             N = len(self.df[entry])
@@ -158,12 +146,9 @@ class DataCleaner:
 
             title = fileName[:len(fileName) - 5] + plotTitle + entry
         
-        logical1 = ft_y > min(ft_y) #Removing erroneous minimum value which is << the second smallest
-        #logical2 = ft_x > ft_x[100] #Arbitrarily cutting out the first 100 elements to get rid of the initial head of the curve
-        #ft_x = ft_x[logical1 & logical2]
-        #ft_y = ft_y[logical1 & logical2]
-        ft_x = ft_x[logical1]
-        ft_y = ft_y[logical1]
+        logical = ft_y > min(ft_y) #Removing erroneous minimum value which is << the second smallest
+        ft_x = ft_x[logical]
+        ft_y = ft_y[logical]
 
         plt.loglog(ft_x, ft_y, plotType, color='b')
         plt.xlabel('Frequency Domain')
@@ -173,12 +158,12 @@ class DataCleaner:
         #Casting a line passing through the final point in the FT with m = gradient
         if gradient is not None:
             #using y = ax^k for loglog plotting
-            #yVal = ft_y.loc[len(ft_y) - 10:].mean()
-            yVal = ft_y.loc[90:110].mean()
+            yVal = ft_y.loc[90:110].mean() #Making the line cut through the approximate start of the tail
             xVal = ft_x[100]
             c = np.log10(yVal/(xVal**gradient))
             line = (10**c)*ft_x[100:]**gradient #Guarding against div0 errors
 
+            #Arbitrarily removing the first 100 points to prevent the line from diverging too far away from the main plot and affecting the scale
             plt.loglog(ft_x[100:], line, color='r')
             plt.legend(['FFT', f'm = {round(gradient, 2)}'])
 
@@ -194,7 +179,7 @@ class DataCleaner:
         """
         self.df.hist(column=entry, bins=bins)
 
-        title = fileName[:len(fileName) - 5] + plotTitle + entry
+        title = fileName[:len(fileName) - 4] + plotTitle + entry
 
         plt.xlabel(entry)
         plt.ylabel('Frequency')
@@ -211,7 +196,6 @@ class DataCleaner:
         Returns logicals set to True for data of type entry that lies beyond +-stdMargain standard deviations from the mean of the dataset.
         """
         cutOff = stdMargain*self.std.loc[entry]
-        #return self.df.loc[np.abs(self.mean.loc[entry] - self.df[entry]) > cutOff, entry]
         return np.abs(self.mean.loc[entry] - self.df[entry]) > cutOff
 
     def gradient_cutoff(self, entry: str, diffStdMargain: float) -> pd.Series:
@@ -231,44 +215,42 @@ class DataCleaner:
         slopeIdx = slopes.index[np.abs(mean - slopes) > cutOff].to_series()
         return self.df.index.isin(slopeIdx)
 
-    def prune_and(self, entry: str, logical1: pd.Series, logical2: pd.Series, iterations=1) -> None:
+    def prune_and(self, entry: str, logical1: pd.Series, logical2: pd.Series) -> None:
         """
         Cuts out datapoints of type entry which fit into condition A and condition B as defined by logical1 and logical2 and replaces them
-        with linear interpolations. Repeated iterations times.
+        with linear interpolations.
         """
-        for i in range(iterations):
-            self.df.loc[(logical1 & logical2), entry] = np.nan
-
+        self.df.loc[(logical1 & logical2), entry] = np.nan
         self.remove_nans(entry, self.df)
 
     def remove_nans(self, entry: str, df: pd.DataFrame) -> None:
         """
         Cuts out NaNs in entry and removes them with linear interpolations.
         """
-        #TODO: This is quite scuffed. Linear interps when two or more neighbouring points are NaN will result in straight lines in that region.
+        #NOTE: This is quite scuffed. Linear interps when two or more neighbouring points are NaN will result in straight lines in that region.
         #Furthermore, for loops are quite cumbersome time-wise, however we tend to only have 40-90 NaNs tops, so it shouldn't affect performance too much.
         for nanIdx in df.index[pd.isna(df[entry])].to_list():
             #If neighbouring points are NaN, recursively find the nearest points which aren't
             xLower, xUpper = self._interp_aux(entry, nanIdx - 1, nanIdx + 1)
 
             #Finding neighbouring x and y values to interpolate between
-            if xLower > 0 and xUpper < len(self.df) - 1:
+            if xLower >= 0 and xUpper <= len(self.df) - 1:
                 xNeighbours = df.GlobalSecs[[xLower, xUpper]].values
                 yNeighbours = df.loc[[xLower, xUpper], entry].values
 
                 df.loc[nanIdx, entry] = np.interp(df.GlobalSecs[nanIdx], xNeighbours, yNeighbours) #Linearly interpolating. If we need to extrapolate (i.e. endpoints), we just say that the value = the neighbour
 
-            elif xLower == 0 and xUpper < len(self.df) - 1:
-                xNeighbours = df.GlobalSecs[xUpper]
-                yNeighbours = df.loc[xUpper, entry]
+            elif xLower < 0 and xUpper < len(self.df) - 1:
+                xNeighbours = [df.GlobalSecs[xUpper], df.GlobalSecs[len(self.df) - 1]] #Forcing the interpolator to extrapolate when we have an edgepoint
+                yNeighbours = [df.loc[xUpper, entry], 0]
 
-                df.loc[nanIdx, entry] = np.interp(df.GlobalSecs[nanIdx], xNeighbours, yNeighbours, left=yNeighbours, right=yNeighbours)
+                df.loc[nanIdx, entry] = np.interp(df.GlobalSecs[nanIdx], xNeighbours, yNeighbours, left=yNeighbours[0], right=yNeighbours[0])
 
-            elif xLower > 0 and xUpper == len(self.df) - 1:
-                xNeighbours = df.GlobalSecs[xLower]
-                yNeighbours = df.loc[xLower, entry]
+            elif xLower > 0 and xUpper > len(self.df) - 1:
+                xNeighbours = [0, df.GlobalSecs[xLower]]
+                yNeighbours = [0, df.loc[xLower, entry]]
 
-                df.loc[nanIdx, entry] = np.interp(self.df.GlobalSecs[nanIdx], xNeighbours, yNeighbours, left=yNeighbours, right=yNeighbours)
+                df.loc[nanIdx, entry] = np.interp(self.df.GlobalSecs[nanIdx], xNeighbours, yNeighbours, left=yNeighbours[1], right=yNeighbours[1])
 
             else:
                 raise ValueError("This dataset is scuffed. Every single point was flagged as bad.")
@@ -282,10 +264,10 @@ class DataCleaner:
         Recursively searching for the nearest non-NaN value to interpolate to. left is the index left of the value being interpolated. Vice versa with
         right.
         """
-        if pd.isna(self.df.loc[right, entry]) and right < len(self.df) - 1: #Need to check if right isn't already an edgepoint
+        if right < len(self.df) - 1 and pd.isna(self.df.loc[right, entry]): #Need to check if right isn't already an edgepoint
             return self._interp_aux(entry, left, right + 1)
 
-        elif pd.isna(self.df.loc[left, entry]) and left > 0:
+        elif left > 0 and pd.isna(self.df.loc[left, entry]):
             return self._interp_aux(entry, left - 1, right)
         
         else:
