@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy.fft import fft, fftfreq
-from fractions import Fraction
+from scipy import signal
 
 class DataCleaner:
     def __init__(self, dir: Path) -> None:
@@ -95,7 +95,7 @@ class DataCleaner:
 
         title = fileName[:len(fileName) - 4] + plotTitle + entry
 
-        plt.loglog(ft_x, dev)
+        plt.loglog(ft_x, dev, plotType)
         plt.xlabel('Frequency Domain')
         plt.ylabel('Deviation')
 
@@ -107,15 +107,25 @@ class DataCleaner:
             plt.savefig(saveLoc + "\\" + title + ".png")
             plt.close()
 
-    def plot_ft_loglog(self, entry: str, fileName: str, supervised=False, saveLoc=None, plotTitle="_FT_LOGLOG_", plotType="-o", sampleSpacing=1, turbulent=False, turbSampleMins=20, gradient=None) -> None:
+    def plot_ft_loglog(self, entry: str, fileName: str, supervised=False, saveLoc=None, plotTitle="_FT_LOGLOG_", plotType="-o", sampleSpacing=1, turbSampleMins=None, gradient=None, windowWidth=None) -> None:
         """
         Presents a plot of the FFT spectral density with both x and y axes in log10. Turbulent switches on u' = u - u_bar with u_bar evaulated over 
         turbSampleMins minutes averaged over the total time and gradient provides the slope for a line starting at the end of the FT curve.
         Refer to plot_ft_dev for other parameter details.
         """
-        if turbulent:
+        timeSeries = self.df[entry].copy(deep=True)
+
+        if windowWidth is not None:
+            N_windows = self.df.Minute[len(self.df) - 1]//windowWidth - 1
+            window = signal.windows.hamming(len(self.df.loc[self.df.Minute <= windowWidth]))
+
+            for i in range(N_windows):
+                vals = timeSeries.loc[(i*windowWidth <= self.df.Minute) & (self.df.Minute <= (i + 1)*windowWidth)].values
+                timeSeries.loc[(i*windowWidth <= self.df.Minute) & (self.df.Minute <= (i + 1)*windowWidth)] = vals*window
+
+        if turbSampleMins is not None:
             #Preallocating array of x values
-            N = len(self.df.loc[(0 <= self.df['Minute']) & (self.df['Minute'] <= turbSampleMins), entry])
+            N = len(timeSeries.loc[(0 <= self.df.Minute) & (self.df.Minute <= turbSampleMins)])
             ft_x = fftfreq(N, sampleSpacing)[:N//2] #The function is symmetric so we are only interested in +ive frequency values
 
             #Preallocating an array of FFTs over turbSampleMins long snapshots to average over
@@ -124,7 +134,7 @@ class DataCleaner:
 
             #Going over each turbSampleMins snapshot and FFTing
             for i in snapshots:
-                y = self.df.loc[(i*turbSampleMins <= self.df['Minute']) & (self.df['Minute'] <= (i + 1)*turbSampleMins), entry]
+                y = timeSeries.loc[(i*turbSampleMins <= self.df.Minute) & (self.df.Minute <= (i + 1)*turbSampleMins)]
                 y_bar = y.mean()
                 y_turb = y - y_bar
 
@@ -138,11 +148,14 @@ class DataCleaner:
             title = fileName[:len(fileName) - 4] + plotTitle + f"_{turbSampleMins}MIN_" + entry
         
         else:
-            N = len(self.df[entry])
+            N = len(timeSeries)
             ft_x = fftfreq(N, sampleSpacing)[:N//2] #The function is symmetric so we are only interested in +ive frequency values
 
-            ft_y = fft(self.df[entry].values)
-            ft_y = 2/N * np.abs(ft_y[:N//2])**2 #Multiplying by 2 to deal with the fact that we chopped out -ive freqs
+            ft_y = fft(timeSeries.values)
+            ft_y = pd.Series(2/N * np.abs(ft_y[:N//2])**2) #Multiplying by 2 to deal with the fact that we chopped out -ive freqs
+
+            #ft_yOg = fft(self.df[entry].values)
+            #ft_yOg = pd.Series(2/N * np.abs(ft_yOg[:N//2])**2)
 
             title = fileName[:len(fileName) - 5] + plotTitle + entry
         
@@ -150,6 +163,10 @@ class DataCleaner:
         ft_x = ft_x[logical]
         ft_y = ft_y[logical]
 
+        #ft_yOg = ft_yOg[logical]
+
+        #plt.loglog(ft_x, ft_y, plotType, color='b')
+        #plt.loglog(ft_x, ft_yOg, plotType, color='g')
         plt.loglog(ft_x, ft_y, plotType, color='b')
         plt.xlabel('Frequency Domain')
         plt.ylabel(f'Spectral Density of Clean {entry} Data')
@@ -158,13 +175,15 @@ class DataCleaner:
         #Casting a line passing through the final point in the FT with m = gradient
         if gradient is not None:
             #using y = ax^k for loglog plotting
-            yVal = ft_y.loc[90:110].mean() #Making the line cut through the approximate start of the tail
-            xVal = ft_x[100]
+            yVal = ft_y.loc[int(np.floor(0.05*len(ft_y)))] #Making the line cut through the approximate start of the tail (the tail corresponds to the tail of the FT, which begins at around 1% of the domain length due to the steep slope near the start of the FT)
+            xVal = ft_x[int(np.floor(0.05*len(ft_y)))]
             c = np.log10(yVal/(xVal**gradient))
-            line = (10**c)*ft_x[100:]**gradient #Guarding against div0 errors
 
-            #Arbitrarily removing the first 100 points to prevent the line from diverging too far away from the main plot and affecting the scale
-            plt.loglog(ft_x[100:], line, color='r')
+            #Restricting the line to 1-50% of the domain to prevent the line from diverging too far away from the main plot and affecting the scale
+            ft_x = ft_x[int(np.floor(0.01*len(ft_y))):int(np.floor(0.5*len(ft_y)))]
+            line = (10**c)*ft_x**gradient #Guarding against div0 errors
+
+            plt.loglog(ft_x, line, color='r')
             plt.legend(['FFT', f'm = {round(gradient, 2)}'])
 
         if supervised:
@@ -182,7 +201,7 @@ class DataCleaner:
         title = fileName[:len(fileName) - 4] + plotTitle + entry
 
         plt.xlabel(entry)
-        plt.ylabel('Frequency')
+        plt.ylabel('Frequency (no. occurences)')
         plt.title(title)
 
         if supervised:
@@ -215,12 +234,19 @@ class DataCleaner:
         slopeIdx = slopes.index[np.abs(mean - slopes) > cutOff].to_series()
         return self.df.index.isin(slopeIdx)
 
-    def prune_and(self, entry: str, logical1: pd.Series, logical2: pd.Series) -> None:
+    def prune_and(self, entry: str, logicals: tuple[pd.Series]) -> None:
         """
-        Cuts out datapoints of type entry which fit into condition A and condition B as defined by logical1 and logical2 and replaces them
+        Cuts out datapoints of type entry which fit into the intersection of all conditions in the tuple logicals and replaces them
         with linear interpolations.
         """
-        self.df.loc[(logical1 & logical2), entry] = np.nan
+        logical = logicals[0]
+
+        #Combining logicals into single condition
+        if len(logicals) > 1:
+            for log in logicals:
+                logical = logical & log
+
+        self.df.loc[logical, entry] = np.nan
         self.remove_nans(entry, self.df)
 
     def remove_nans(self, entry: str, df: pd.DataFrame) -> None:
@@ -272,34 +298,3 @@ class DataCleaner:
         
         else:
             return (left, right)
-
-
-
-    
-    # def frequency_cutoff(self, entry: str, freqStdMargain: float, iterations: int) -> None:
-    #     """
-    #     Slices off data whose frequency lies beyond +-freqStdMargain standard deviations from the frequency. Repeated iterations times. Used to remove bars of data
-    #     """
-    #     if iterations < 1:
-    #         raise ValueError("iterations must be >= 1")
-
-    #     for i in range(iterations):
-    #         #Finding the derivative in unit/s
-    #         frequencies = self.df.groupby([entry])[entry].count().reset_index(name='Count').sort_values(['Count'], ascending=False)
-    #         #print(frequencies)
-    #         self.df.hist(column=entry,bins=30)
-    #         #print(len(self.df.loc[self.df[entry] == 34.29]))
-
-    #         cutOff = freqStdMargain*frequencies.std()
-    #         mean = frequencies.mean()
-
-    #         #Finding slopes too steep and removing associated datapoints
-    #         """
-    #         slopeIdx = slopes.loc[np.abs(mean - slopes) > cutOff].index
-    #         self.df.loc[self.df.index.isin(slopeIdx), entry] = np.nan
-
-    #         #Updating mean and std
-    #         self.mean = self.df.mean()
-    #         self.std = self.df.std()
-    #         """
-    

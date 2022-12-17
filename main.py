@@ -4,6 +4,7 @@ from pathlib import Path
 import glob
 import multiprocessing as mp
 import numpy as np
+from matplotlib import pyplot as plt
 
 def cleanup_loop(readDir: Path, writeDir: Path, supervised=True, cpuFraction=75):
     """
@@ -19,7 +20,7 @@ def cleanup_loop(readDir: Path, writeDir: Path, supervised=True, cpuFraction=75)
     #Manual one-by-one checking
     if supervised:
         for file in files:
-            rejectedFile = _cleanup_iteration(file, writeDir, supervised=False)
+            rejectedFile = _cleanup_iteration(file, writeDir, supervised=True)
             if rejectedFile is not None:
                 rejectedFiles.append(rejectedFile)
 
@@ -58,22 +59,22 @@ def _cleanup_iteration(file: Path, writeDir: Path, supervised=True) -> str|None:
     ###NOTE: EDIT THIS TO GRAB THE DATAPOINTS YOU NEED FOR A PARTICULAR CLEANUP RUN
     v1 = "Anemometer #1 W Velocity (ms-1)"
     data.remove_nans(v1, data.originalDf)
-    data.prune_and(v1, data.std_cutoff(v1, 3), data.gradient_cutoff(v1, 2))
+    data.prune_and(v1, (data.std_cutoff(v1, 3), data.gradient_cutoff(v1, 2)))
 
     v2 = "Anemometer #2 W Velocity (ms-1)"
     data.remove_nans(v2, data.originalDf)
-    data.prune_and(v2, data.std_cutoff(v2, 3), data.gradient_cutoff(v2, 2))
+    data.prune_and(v2, (data.std_cutoff(v2, 3), data.gradient_cutoff(v2, 2)))
 
     t1 = "Anemometer #1 Temperature (degC)"
     data.remove_nans(t1, data.originalDf)
-    data.prune_and(t1, data.std_cutoff(t1, 3), data.gradient_cutoff(t1, 2))
+    data.prune_and(t1, (data.std_cutoff(t1, 3), data.gradient_cutoff(t1, 2)))
+    data.prune_and(t1, (data.std_cutoff(t1, 3), data.gradient_cutoff(t1, 2)))
 
     t2 = "Anemometer #2 Temperature (degC)"
     data.remove_nans(t2, data.originalDf)
-    data.prune_and(t2, data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2))
-    data.prune_and(t2, data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2))
+    data.prune_and(t2, (data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2)))
+    data.prune_and(t2, (data.std_cutoff(t2, 3), data.gradient_cutoff(t2, 2)))
     
-
     #data.plot_comparison(v1, fileName, supervised=supervised, saveLoc=writeDir + "plots")
     #data.plot_comparison(v2, fileName, supervised=supervised, saveLoc=writeDir + "plots")
     #data.plot_comparison(t1, fileName, supervised=supervised, saveLoc=writeDir + "plots")
@@ -84,15 +85,15 @@ def _cleanup_iteration(file: Path, writeDir: Path, supervised=True) -> str|None:
     #data.plot_ft_dev_loglog(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
     #data.plot_ft_dev_loglog(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\devs", plotType="-")
     
-    #data.plot_ft_loglog(v1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-5/3)
-    #data.plot_ft_loglog(v2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-5/3)
-    #data.plot_ft_loglog(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-1)
-    #data.plot_ft_loglog(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbulent=True, gradient=-1)
-
-    data.plot_hist(v1, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=100)
-    data.plot_hist(v2, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=100)
-    data.plot_hist(t1, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=100)
-    data.plot_hist(t2, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=100)
+    data.plot_ft_loglog(v1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbSampleMins=2, gradient=-5/3, windowWidth=None)
+    data.plot_ft_loglog(v2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbSampleMins=2, gradient=-5/3, windowWidth=None)
+    #data.plot_ft_loglog(t1, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbSampleMins=10, gradient=-1)
+    #data.plot_ft_loglog(t2, fileName, supervised=supervised, saveLoc=writeDir + "FTs\\loglogs", plotType="-", turbSampleMins=10, gradient=-1)
+    
+    #data.plot_hist(v1, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=1000)
+    #data.plot_hist(v2, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=1000)
+    #data.plot_hist(t1, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=200)
+    #data.plot_hist(t2, fileName, supervised=supervised, saveLoc=writeDir + "hists", bins=200)
 
     if supervised:
         #Writing cleaned up file or rejecting it
@@ -117,7 +118,8 @@ def _cleanup_iteration(file: Path, writeDir: Path, supervised=True) -> str|None:
         
         print(f"Cleaned up {fileName}")
 
-from matplotlib import pyplot as plt
+from scipy import signal
+
 if __name__=='__main__':
     ###NOTE: I/O DIRECTORIES. CHANGE AS REQUIRED
     dir = os.getcwd()
@@ -125,8 +127,32 @@ if __name__=='__main__':
     readDir = dir + "\\Apr2015"
     writeDir = dir + "\\Apr2015_temp_and_w_clean"
 
-    cleanup_loop(readDir, writeDir, supervised=True, cpuFraction=90)
+    #cleanup_loop(readDir, writeDir, supervised=False, cpuFraction=90)
     #data = dc.DataCleaner(writeDir + "\\NRAFBR_02042015_070000.txt")
     #t2 = "Anemometer #2 Temperature (degC)"
     #plt.plot(data.df.GlobalSecs, data.df[t2])
     #plt.show()
+    
+    N = 500
+    L = 3
+    xVals = np.arange(N)
+    yVals = 5*np.sin(xVals*2*np.pi/N)
+    yVals2 = yVals.copy()
+    width = N//L
+    window = signal.windows.hamming(width)
+
+    plt.plot(xVals, yVals)
+    for i in range(L):
+        x = xVals[i*width:(i+1)*width]
+        yVals2[i*width:(i+1)*width] *= window
+        plt.plot(x, window)
+    plt.grid(True)
+    plt.show()
+
+    plt.plot(xVals, yVals2)
+    for i in range(L):
+        x = xVals[i*width:(i+1)*width]
+        plt.plot(x, window)
+    plt.grid(True)
+    plt.show()
+    
